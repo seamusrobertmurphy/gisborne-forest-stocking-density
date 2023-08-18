@@ -39,6 +39,7 @@ library(gdalUtils)
 #knit_hooks$set(rgl.static = hook_rgl)
 knitr::opts_chunk$set(echo = TRUE, warning=FALSE, error=FALSE, message = FALSE)
 set.seed(123)
+# ShortCUt l.95
 ```
 
 ## Action:
@@ -124,31 +125,28 @@ plot(heights, window_plowright, type = "l", ylim = c(0,12), xlab="point elevatio
 kernel <- matrix(1,3,3)
 chm_raster = focal(chm_rast, w = kernel, fun = median, na.rm = TRUE) %>% raster()
 ttops_1.5mfloor_plowright = ForestTools::vwf(chm_raster, wf_plowright, 1.5)
-writeOGR(ttops_1.5floor_plowright, "~/Desktop/Summit_Forestry/stands", "treetops_hills_009", driver = "ESRI Shapefile") 
+writeOGR(ttops_1.5mfloor_plowright, "~/Desktop/Summit_Forestry/stands", "treetops_hills_009", driver = "ESRI Shapefile") 
 
 quant95 <- function(x, ...) 
   quantile(x, c(0.95), na.rm = TRUE)
 custFuns <- list(quant95, max)
 names(custFuns) <- c("95thQuantile", "Max")
 
-ttops_1.5floor_raster <- ForestTools::sp_summarise(ttops_1.5floor_plowright, grid = 1, variables = "height", statFuns = custFuns)
-chm_95height_raster = ttops_1.5floor_raster[["height95thQuantile"]]
-chm_95height_rast = terra::rast(chm_95height_raster)
-stem_count_raster = ttops_1.5floor_raster[["TreeCount"]]
+ttops_1.5mfloor_height <- ForestTools::sp_summarise(ttops_1.5mfloor_plowright, grid = 1, variables = "height", statFuns = custFuns)
+chm_95height_raster = ttops_1.5mfloor_height[["height95thQuantile"]]
+#chm_95height_rast = terra::rast(chm_95height_raster)
+raster::writeRaster(chm_95height_raster, filename = "~/Desktop/Summit_Forestry/stands/chm_95height.tif", overwrite=TRUE)
+
+stem_count_raster = ttops_1.5mfloor_height[["TreeCount"]]
 stem_count_sf = st_as_sf(stem_count_raster)
-stem_count_rast = rasterize(vect(stem_count_sf), raster_template, fun = sum, touches = TRUE)
+stem_count_rast = rasterize(vect(stem_count_sf), chm_raster, fun = sum, touches = TRUE)
 stem_count_ha_rast = stem_count_rast*100 #aggregate to 100m resolution for stems per hectare
+stem_count_ha_raster = raster::raster(stem_count_ha_rast)
+raster::writeRaster(stem_count_ha_raster, filename = "~/Desktop/Summit_Forestry/stands/stem_count_ha.tif", overwrite=TRUE)
+
 mypalette<-brewer.pal(8,"Greens")
 plot(chm_95height_raster, col = mypalette, alpha=0.6)
 plot(st_geometry(stem_count_sf["treeID"]), add=TRUE, cex = 0.001, pch=19, col = 'red', alpha=0.8) 
-
-raster::writeRaster(chm_95height_raster, filename = "~/Desktop/Summit_Forestry/stands/chm_95height.tif", overwrite=TRUE)
-raster::writeRaster(stem_count_raster, filename = "~/Desktop/Summit_Forestry/stands/stem_count.tif", overwrite=TRUE)
-chm_95height_rast = terra::rast(chm_95height_raster)
-stem_count_rast = terra::rast(stem_count_raster)
-terra::plot(chm_95height_rast)
-terra::plot(stem_count_rast)
-
 
 # Point Cloud Pipeline (or smaller areas with lighter memory tasks...)
 ## stem_count_sp = find_trees(chm_95height, lmf(wf_plowright), uniqueness = "bitmerge")
