@@ -45,19 +45,38 @@ set.seed(123)
 
 The following documents tasks undertaken to ReMap Hills Forest Area and identify changes from baseline datasets. Using LiDAR DEM and DSM, a canopy height model was derived from which a stem count was calculated according to Qi's algorithm (2020).
 
-
-
-
-## 1. All-Species Areas: Includes Fd and non-Fd stands
-
-### 1.1. All-Species Areas: Import DEM and CHM
+## 1. Import LiDAR & Filter
 
 ```{r, eval=FALSE}
 # Merge chunks
-filez_be_ahbau = list.files("/media/seamus/Ubuntu 22_04 LTS amd64/mosaics/ahbau/BareEarth", full.names = T, all.files = FALSE, pattern = '.tif$') 
-elev_raster_list_ahbau <- lapply(filez_be_ahbau, raster)
-elev_raster_ahbau = do.call(merge, c(elev_raster_list_ahbau, tolerance = 1))
-elev_rast_ahbau = terra::rast(elev_raster_ahbau)
+filez_dem = list.files("~/Desktop/Summit_Forestry/dem", full.names = T, all.files = FALSE, pattern = '.tif$') 
+filez_dsm = list.files("~/Desktop/Summit_Forestry/dsm", full.names = T, all.files = FALSE, pattern = '.tif$') 
+elev_raster_list <- lapply(filez_dem, raster)
+chm_raster_list <- lapply(filez_dsm, raster)
+elev_raster = do.call(merge, c(elev_raster_list, tolerance = 1))
+chm_raster = do.call(merge, c(chm_raster_list, tolerance = 1))
+writeRaster(elev_raster, filename = "~/Desktop/Summit_Forestry/dem/elev_raster.tif", overwrite=TRUE)
+writeRaster(chm_raster, filename = "~/Desktop/Summit_Forestry/dsm/chm_raster.tif", overwrite=TRUE)
+elev_rast = terra::rast(elev_raster)
+chm_rast = terra::rast(chm_raster)
+terra::crs(elev_rast) 
+terra::crs(chm_rast) 
+
+hills_mask_sf = sf::read_sf("~/Desktop/Summit_Forestry/stands/hills_forest_bdry.shp")
+hills_mask_rast = rasterize(vect(hills_mask_sf), elev_rast, touches = TRUE)
+hills_mask_raster = raster::raster(hills_mask_rast)
+writeRaster(hills_mask_raster, filename = "~/Desktop/Summit_Forestry/stands/hills_mask_raster.tif", overwrite=TRUE)
+ggplot(hills_mask_sf) + geom_sf(aes(fill = 'red'), show.legend = FALSE)
+
+hills_mask_rast = terra::resample(hills_mask_rast, elev_rast, method="near")
+elev = mask(elev_rast, hills_mask_rast, inverse=TRUE)
+
+
+
+# Masking & Resampling
+masks_rast_quesnel = terra::resample(masks_rast_quesnel, lead_htop_rast_20cell_quesnel, method="near")
+
+
 terra::crs(elev_rast_ahbau) = "epsg:3005"
 elev_rast_ahbau = terra::aggregate(elev_rast_ahbau, fact = 100, fun = mean)
 writeRaster(elev_rast_ahbau, filename = "/media/seamus/Ubuntu 22_04 LTS amd64/mosaics/ahbau/elev_raster_100m_ahbau.tif", overwrite=TRUE)
