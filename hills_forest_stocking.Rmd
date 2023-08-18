@@ -69,9 +69,9 @@ hills_mask_raster = raster::raster(hills_mask_rast)
 writeRaster(hills_mask_raster, filename = "~/Desktop/Summit_Forestry/stands/hills_mask_raster.tif", overwrite=TRUE)
 ggplot(hills_mask_sf) + geom_sf(aes(fill = 'red'), show.legend = FALSE)
 
-hills_mask_rast = terra::resample(hills_mask_rast, elev_rast, method="near")
-chm_rast = terra::resample(chm_rast, elev_rast, method="near")
-elev_rast = terra::resample(elev_rast, hills_mask_rast, method="near")
+hills_mask_rast = terra::resample(hills_mask_rast, chm_rast, method="near")
+elev_rast = terra::resample(elev_rast, chm_rast, method="near")
+chm_rast = terra::resample(chm_rast, hills_mask_rast, method="near")
 
 # Apply Mask
 elev = mask(elev_rast, hills_mask_rast, inverse=TRUE)
@@ -110,200 +110,64 @@ window_plowright <- wf_plowright(heights)
 plot(heights, window_plowright, type = "l", ylim = c(0,12), xlab="point elevation (m)", ylab="window diameter (m)", main='Plowright, 2018; y=0.05*x+0.6')
 ```
 
-### Input: Height & Stems
+### Input: Derive 95% Height Function & Count Stems
 
-```{r, eval=TRUE}
+```{r, eval=TRUE, fig.show='hold', out.width="33%", echo=FALSE}
 chm_raster = focal(chm_rast, w = kernel, fun = median, na.rm = TRUE) %>% raster()
+ttops_1.5mfloor_plowright = ForestTools::vwf(chm_raster, wf_plowright, 1.5)
+writeOGR(ttops_1.5floor_plowright, "~/Desktop/Summit_Forestry/stands/stem_count", "treetops_hills_forest", driver = "ESRI Shapefile")
 
-slope_rast_quesnel = terra::terrain(elev_rast_quesnel, v="slope", unit="degrees", neighbors=8)
-aspect_rast_quesnel = terra::terrain(elev_rast_quesnel, v="aspect", unit="degrees", neighbors=8)
-asp_cos_rast_quesnel = cos((aspect_rast_quesnel*pi)/180)
-asp_sin_rast_quesnel = sin((aspect_rast_quesnel*pi)/180)
-writeRaster(elev_rast_quesnel, filename = "/media/seamus/128GB_WORKD/data/raster/tcc/inputs/unmasked-covariates/dem-based/elev_raster_100m_quesnel.tif", overwrite=TRUE)
-writeRaster(slope_rast_quesnel, filename = "/media/seamus/128GB_WORKD/data/raster/tcc/inputs/unmasked-covariates/dem-based/slope_raster_100m_quesnel.tif", overwrite=TRUE)
-writeRaster(asp_cos_rast_quesnel, filename = "/media/seamus/128GB_WORKD/data/raster/tcc/inputs/unmasked-covariates/dem-based/asp_cos_raster_100m_quesnel.tif", overwrite=TRUE)
-writeRaster(asp_sin_rast_quesnel, filename = "/media/seamus/128GB_WORKD/data/raster/tcc/inputs/unmasked-covariates/dem-based/asp_sin_raster_100m_quesnel.tif", overwrite=TRUE)
-writeRaster(lead_htop_rast_quesnel, filename = "/media/seamus/128GB_WORKD/data/raster/tcc/inputs/unmasked-covariates/dem-based/lead_htop_raster_100m_quesnel.tif", overwrite=TRUE)
+quant95 <- function(x, ...) 
+  quantile(x, c(0.95), na.rm = TRUE)
+custFuns <- list(quant95, max)
+names(custFuns) <- c("95thQuantile", "Max")
+
+ttops_1.5floor_raster <- ForestTools::sp_summarise(ttops_1.5floor_plowright, grid = 1, variables = "height", statFuns = custFuns)
+chm_95height_raster = ttops_1.5floor_raster[["height95thQuantile"]]
+stem_count_raster = ttops_1.5floor_raster[["TreeCount"]]
+
+raster::writeRaster(chm_95height_raster, filename = "~/Desktop/Summit_Forestry/stands/chm_95height.tif", overwrite=TRUE)
+raster::writeRaster(stem_count_raster, filename = "~/Desktop/Summit_Forestry/stands/stem_count.tif", overwrite=TRUE)
+chm_95height_rast = terra::rast(chm_95height_raster)
+stem_count_rast = terra::rast(stem_count_raster)
+terra::plot(chm_95height_rast)
+terra::plot(stem_count_rast)
+
+
+# Point Cloud Pipeline (or for smaller areas with lighter memory loads...)
+## stem_count_sp = find_trees(chm_95height, lmf(wf_plowright), uniqueness = "bitmerge")
+## stem_count_sf = st_as_sf(stem_count_sp)
+## mypalette<-brewer.pal(8,"Greens")
+## plot(chm_95height_raster, col = mypalette, alpha=0.6)
+## plot(st_geometry(stem_count_sf["treeID"]), add=TRUE, cex = 0.001, pch=19, col = 'red', alpha=0.8)
+
+# Point Cloud Pipeline: Check Tree-ID as proof of stem count...
+## algo = dalponte2016(chm_95height_raster, stem_count_sp)
+## chm_95h_segmented = segment_trees(chm_95height_raster, algo)
+## chm_95h_segmented_crowns = delineate_crowns(chm_95h_segmented, type = 'convex')
+## chm_95h_segmented_crowns_spplot = sp::plot(chm_95h_segmented_crowns, cex=0.000001, axes = TRUE, alpha=0.1)
+
+# Point Cloud Pipeline: Derive raster
+## chm_95h_segmented_crowns_sf = st_as_sf(chm_95h_segmented_crowns, coords = c("XTOP", "YTOP"), st_crs=2193)
+## psych::describe(chm_95h_segmented_crowns_sf$treeID)
+## raster_template = rast(ext(chm_95height_raster), resolution = 1, crs = st_crs(chm_95height_raster)$wkt)
+## segmented_crowns_rast = rasterize(vect(chm_95h_segmented_crowns_sf), raster_template, fun = sum, touches = TRUE)
+## stem_count_ha_rast = las_tile_ahbau_ttops_rast*100
+## stem_count_ha_raster = raster::raster(stem_count_ha_rast, filename = "~/Desktop/Summit_Forestry/stands/stem_count_ha_raster.tif")
+## stem_count_ha_raster = writeRaster(stem_count_ha_raster, filename = "~/Desktop/Summit_Forestry/stands/stem_count_ha_raster.tif", overwrite=TRUE)
+## stem_count_ha_raster = raster::raster(stem_count_ha_rast, filename = "~/Desktop/Summit_Forestry/stands/stem_count_ha_raster.tif")
+## plot(segmented_crowns_rast)
+## plot(stem_count_ha_raster)
+
+
 ```
 
-```{r, fig.show='hold', out.width="33%", echo=FALSE}
-elev_rast_quesnel = terra::rast("/media/seamus/128GB_WORKD/data/raster/tcc/inputs/unmasked-covariates/dem-based/elev_raster_100m_quesnel.tif")
-lead_htop_rast_quesnel = terra::rast("/media/seamus/128GB_WORKD/data/raster/tcc/inputs/unmasked-covariates/dem-based/lead_htop_raster_100m_quesnel.tif")
-slope_rast_quesnel = terra::rast("/media/seamus/128GB_WORKD/data/raster/tcc/inputs/unmasked-covariates/dem-based/slope_raster_100m_quesnel.tif")
-asp_cos_rast_quesnel = terra::rast("/media/seamus/128GB_WORKD/data/raster/tcc/inputs/unmasked-covariates/dem-based/asp_cos_raster_100m_quesnel.tif")
-asp_sin_rast_quesnel = terra::rast("/media/seamus/128GB_WORKD/data/raster/tcc/inputs/unmasked-covariates/dem-based/asp_sin_raster_100m_quesnel.tif")
-terra::plot(elev_rast_quesnel)
-terra::plot(slope_rast_quesnel)
-terra::plot(asp_cos_rast_quesnel)
-terra::plot(asp_sin_rast_quesnel)
-terra::plot(lead_htop_rast_quesnel)
-```
-
-### 2.3. Quesnel Lake: Derive Species Raster
-
-```{r, eval=FALSE}
-lead_htop_sv_quesnel = as.polygons(lead_htop_rast_quesnel)
-lead_htop_sf_quesnel = sf::st_as_sf(lead_htop_sv_quesnel)
-vri_sf = read_sf("/media/seamus/128GB_WORKD/data/vector/vri/vri_tcc_lquan_20220627.shp")
-#vri_species = vri_sf[c("SPECIES_CD", "SPECIES_PC")]
-vri_species =  dplyr::filter(vri_sf, 
-    SPECIES_CD=='PL' | SPECIES_CD=='PLI' | SPECIES_CD=='FD' | SPECIES_CD=='FDI' |
-    SPECIES_CD=='SB' | SPECIES_CD=='SE' | SPECIES_CD=='SW' | SPECIES_CD=='SX' | 
-    SPECIES_CD=='CW' | SPECIES_CD=='HW' | SPECIES_CD=='BL' | SPECIES_CD=='LW')
-vri_species_allspecies = vri_species
-vri_species_allspecies$SPECIES_CD = dplyr::recode(vri_species$SPECIES_CD, 
-  PL = 0, PLI = 0, SB = 1, SE = 1, SW = 1, SX = 1, FD = 2, FDI = 2, CW = 3, HW = 4, BL = 5, LW = 6)
-vri_species_allspecies = dplyr::rename(vri_species_allspecies, species_class = SPECIES_CD)
-vri_species_allspecies = vri_species_allspecies["species_class"]
-vri_species_allspecies_sf = sf::st_as_sf(vri_species_allspecies)
-vri_species_aoi_quesnel = st_intersection(vri_species_allspecies_sf, st_make_valid(lead_htop_sf_quesnel))
-species_class_rast_quesnel = terra::rasterize(vect(vri_species_aoi_quesnel), lead_htop_rast_quesnel, field = "species_class", touches = TRUE)
-species_class_rast_quesnel = terra::resample(species_class_rast_quesnel, lead_htop_rast_quesnel)
-species_class_raster_quesnel = raster::raster(species_class_rast_quesnel)
-raster::writeRaster(species_class_raster_quesnel, filename = "/media/seamus/128GB_WORKD/data/raster/tcc/inputs/unmasked-covariates/dem-based/species_class_raster_100m_quesnel_allSpecies.tif", overwrite=TRUE)
-```
-
-```{r, echo=FALSE}
-species_class_raster_quesnel = raster::raster("/media/seamus/128GB_WORKD/data/raster/tcc/inputs/unmasked-covariates/dem-based/species_class_raster_100m_quesnel_allSpecies.tif")
-species_class_rast_quesnel = terra::rast(species_class_raster_quesnel)
-terra::plot(species_class_rast_quesnel)
-```
-
-### 2.4. Quesnel Lake: Derive Mask to Include Estimates of "RESULTS, TCC_Blocks" Areas
-
-```{r, fig.show='hold', out.width="25%", eval=FALSE}
-#mask_burn2017 = sf::read_sf("/media/seamus/128GB_WORKD/data/vector/tcc_mask_layers/TCC_Burn_Severity TCC_Burn_Severity_2017.shp")
-#mask_burn2018 = sf::read_sf("/media/seamus/128GB_WORKD/data/vector/tcc_mask_layers/TCC_Burn_Severity TCC_Burn_Severity_2018.shp")
-#mask_burn2021 = sf::read_sf("/media/seamus/128GB_WORKD/data/vector/tcc_mask_layers/TCC_Burn_Severity TCC_Burn_Severity_2021.shp")
-#mask_burn2017 = mask_burn2017["BurnSev"]
-#mask_burn2018 = mask_burn2018["BurnSev"]
-#mask_burn2021 = mask_burn2021["BurnSev"]
-#mask_burn2017 = dplyr::filter(mask_burn2017, BurnSev == 'High')
-#mask_burn2018 = dplyr::filter(mask_burn2018, BurnSev == 'High')
-#mask_burn2021 = dplyr::filter(mask_burn2021, BurnSev == 'High')
-#mask_roads = sf::read_sf("/media/seamus/128GB_WORKD/data/vector/tcc_mask_layers/TCC_Roads.shp")
-#mask_roads = sf::st_zm(mask_roads)
-#mask_roads = sf::st_buffer(mask_roads, dist = 15, nQuadSegs = 5, endCapStyle = "ROUND", joinStyle = "ROUND", mitreLimit = 2)
-#mask_roads_ften = sf::read_sf("/media/seamus/128GB_WORKD/data/vector/tcc_mask_layers/FTEN_Roads_All.shp")
-#mask_roads_ften = sf::st_zm(mask_roads_ften)
-#mask_roads_ften = sf::st_buffer(mask_roads_ften, dist = 15, nQuadSegs = 5, endCapStyle = "ROUND", joinStyle = "ROUND", mitreLimit = 2)
-#mask_clearcut = sf::read_sf("/media/seamus/128GB_WORKD/data/vector/tcc_mask_layers/RSLT_CCRES_CLEAR.shp")
-#mask_blocks = sf::read_sf("/media/seamus/128GB_WORKD/data/vector/tcc_mask_layers/TCC_Blocks_Join.shp")
-
-#mask_burn2017_devBlocks_quesnel = sf::st_intersection(sf::st_make_valid(mask_burn2017), lead_htop_sf_quesnel)
-#mask_burn2018_devBlocks_quesnel = sf::st_intersection(sf::st_make_valid(mask_burn2018), lead_htop_sf_quesnel)
-#mask_burn2021_devBlocks_quesnel = sf::st_intersection(sf::st_make_valid(mask_burn2021), lead_htop_sf_quesnel)
-#masks_df_devBlocks_quesnel = full_join(as_tibble(mask_burn2017_devBlocks_quesnel), as_tibble(mask_burn2018_devBlocks_quesnel), as_tibble(mask_burn2021_devBlocks_quesnel), by = "geometry")
-
-#masks_sf_devBlocks_quesnel = st_as_sf(masks_df_devBlocks_quesnel) 
-#mask_roads_devBlocks_quesnel = sf::st_intersection(mask_roads, st_make_valid(lead_htop_sf_quesnel))
-#mask_roads_ften_devBlocks_quesnel = sf::st_intersection(mask_roads_ften, st_make_valid(lead_htop_sf_quesnel))
-#masks_df_devBlocks_quesnel = full_join(as_tibble(masks_sf_devBlocks_quesnel), as_tibble(mask_roads_devBlocks_quesnel), as_tibble(mask_roads_ften_devBlocks_quesnel), by = 'geometry')
-#masks_sf_devBlocks_quesnel = st_as_sf(masks_df_devBlocks_quesnel)
-#masks_lquan_20220627 = sf::read_sf("/media/seamus/128GB_WORKD/data/vector/tcc_mask_layers/tcc_masks_lquan_20220627.shp")
-masks_lquan_20220627 = sf::read_sf("/media/seamus/128GB_WORKD/data/vector/tcc_mask_layers/tcc_masks_lquan_quesnel_20220628.shp")
-st_crs(masks_lquan_20220627) = 3005
-#masks_sf_devBlocks_quesnel = sf::st_intersection(masks_lquan_20220627, st_make_valid(lead_htop_sf_quesnel))
-masks_rast_devBlocks_quesnel = rasterize(vect(masks_lquan_20220627), lead_htop_rast_quesnel, touches = TRUE)
-masks_raster_devBlocks_quesnel = raster::raster(masks_rast_devBlocks_quesnel)
-writeRaster(masks_raster_devBlocks_quesnel, filename = "/media/seamus/128GB_WORKD/data/raster/tcc/inputs/mask/mask_raster_100m_devBlocks_quesnel_20220628.tif", overwrite=TRUE)
-ggplot(masks_sf_devBlocks_quesnel) + geom_sf(aes(fill = 'red'), show.legend = FALSE)
-```
-
-```{r, echo=FALSE}
-masks_raster_devBlocks_quesnel = raster::raster("/media/seamus/128GB_WORKD/data/raster/tcc/inputs/mask/mask_raster_100m_devBlocks_quesnel_20220628.tif")
-masks_rast_devBlocks_quesnel = terra::rast(masks_raster_devBlocks_quesnel)
-masks_sv_devBlocks_quesnel = as.polygons(masks_rast_devBlocks_quesnel)
-masks_sf_devBlocks_quesnel = sf::st_as_sf(masks_sv_devBlocks_quesnel)
-ggplot(masks_sf_devBlocks_quesnel) + geom_sf(aes(fill = 'red'), show.legend = FALSE)
-```
-
-### 2.5. Quesnel Lake: Apply Masking
-
-```{r, eval=FALSE}
-# mask by mask
-lead_htop_rast_quesnel = terra::resample(lead_htop_rast_quesnel, elev_rast_quesnel)
-masks_rast_devBlocks_quesnel = terra::resample(masks_rast_devBlocks_quesnel, elev_rast_quesnel)
-species_class_rast_quesnel = terra::resample(species_class_rast_quesnel, elev_rast_quesnel)
-lead_htop_rast_quesnel_masked = mask(lead_htop_rast_quesnel, masks_rast_devBlocks_quesnel, inverse=FALSE)
-elev_rast_quesnel_masked = mask(elev_rast_quesnel, masks_rast_devBlocks_quesnel, inverse=FALSE)
-slope_rast_quesnel_masked = mask(slope_rast_quesnel, masks_rast_devBlocks_quesnel, inverse=FALSE)
-asp_cos_rast_quesnel_masked = mask(asp_cos_rast_quesnel, masks_rast_devBlocks_quesnel, inverse=FALSE)
-asp_sin_rast_quesnel_masked = mask(asp_sin_rast_quesnel, masks_rast_devBlocks_quesnel, inverse=FALSE)
-species_class_rast_quesnel_masked = mask(species_class_rast_quesnel, masks_rast_devBlocks_quesnel, inverse=FALSE)
-# mask by species
-lead_htop_rast_quesnel_masked = mask(lead_htop_rast_quesnel_masked, species_class_rast_quesnel_masked, inverse=FALSE)
-elev_rast_quesnel_masked = mask(elev_rast_quesnel_masked, species_class_rast_quesnel_masked, inverse=FALSE)
-slope_rast_quesnel_masked = mask(slope_rast_quesnel_masked, species_class_rast_quesnel_masked, inverse=FALSE)
-asp_cos_rast_quesnel_masked = mask(asp_cos_rast_quesnel_masked, species_class_rast_quesnel_masked, inverse=FALSE)
-asp_sin_rast_quesnel_masked = mask(asp_sin_rast_quesnel_masked, species_class_rast_quesnel_masked, inverse=FALSE)
-# save outputs
-writeRaster(lead_htop_rast_quesnel_masked, filename = "/media/seamus/128GB_WORKD/data/raster/tcc/inputs/masked-covariates/dem-based/lead_htop_rast_quesnel_masked.tif", overwrite=TRUE)
-writeRaster(elev_rast_quesnel_masked, filename = "/media/seamus/128GB_WORKD/data/raster/tcc/inputs/masked-covariates/dem-based/elev_rast_quesnel_masked.tif", overwrite=TRUE)
-writeRaster(slope_rast_quesnel_masked, filename = "/media/seamus/128GB_WORKD/data/raster/tcc/inputs/masked-covariates/dem-based/slope_rast_quesnel_masked.tif", overwrite=TRUE)
-writeRaster(asp_cos_rast_quesnel_masked, filename = "/media/seamus/128GB_WORKD/data/raster/tcc/inputs/masked-covariates/dem-based/asp_cos_rast_quesnel_masked.tif", overwrite=TRUE)
-writeRaster(asp_sin_rast_quesnel_masked, filename = "/media/seamus/128GB_WORKD/data/raster/tcc/inputs/masked-covariates/dem-based/asp_sin_rast_quesnel_masked.tif", overwrite=TRUE)
-writeRaster(species_class_rast_quesnel_masked, filename = "/media/seamus/128GB_WORKD/data/raster/tcc/inputs/masked-covariates/dem-based/species_class_rast_quesnel_masked.tif", overwrite=TRUE)
-```
-
-```{r, fig.show='hold', out.width="33%", echo=FALSE}
-lead_htop_rast_quesnel_masked = terra::rast("/media/seamus/128GB_WORKD/data/raster/tcc/inputs/masked-covariates/dem-based/lead_htop_rast_quesnel_masked.tif")
-elev_rast_quesnel_masked = terra::rast("/media/seamus/128GB_WORKD/data/raster/tcc/inputs/masked-covariates/dem-based/elev_rast_quesnel_masked.tif")
-slope_rast_quesnel_masked = terra::rast("/media/seamus/128GB_WORKD/data/raster/tcc/inputs/masked-covariates/dem-based/slope_rast_quesnel_masked.tif")
-asp_cos_rast_quesnel_masked = terra::rast("/media/seamus/128GB_WORKD/data/raster/tcc/inputs/masked-covariates/dem-based/asp_cos_rast_quesnel_masked.tif")
-asp_sin_rast_quesnel_masked = terra::rast("/media/seamus/128GB_WORKD/data/raster/tcc/inputs/masked-covariates/dem-based/asp_sin_rast_quesnel_masked.tif")
-species_class_rast_quesnel_masked = terra::rast("/media/seamus/128GB_WORKD/data/raster/tcc/inputs/masked-covariates/dem-based/species_class_rast_quesnel_masked.tif")
-terra::plot(lead_htop_rast_quesnel_masked)
-terra::plot(elev_rast_quesnel_masked)
-terra::plot(slope_rast_quesnel_masked)
-terra::plot(asp_cos_rast_quesnel_masked)
-terra::plot(asp_sin_rast_quesnel_masked)
-terra::plot(species_class_rast_quesnel_masked)
-```
-
-### 2.6. Quesnel Lake: Stack and Tidy Covariates
-
-```{r}
-# Rename rasters
-names(lead_htop_rast_quesnel_masked) = "lead_htop"
-names(elev_rast_quesnel_masked) = "elev"
-names(slope_rast_quesnel_masked) = "slope"
-names(asp_cos_rast_quesnel_masked) = "asp_cos"
-names(asp_sin_rast_quesnel_masked) = "asp_sin"
-names(species_class_rast_quesnel_masked) = "species_class"
-# transform spatRaster to raster
-lead_htop_raster_quesnel_masked = raster::raster(lead_htop_rast_quesnel_masked)
-elev_raster_quesnel_masked = raster::raster(elev_rast_quesnel_masked)
-slope_raster_quesnel_masked = raster::raster(slope_rast_quesnel_masked)
-asp_cos_raster_quesnel_masked = raster::raster(asp_cos_rast_quesnel_masked)
-asp_sin_raster_quesnel_masked = raster::raster(asp_sin_rast_quesnel_masked)
-species_class_raster_quesnel_masked = raster::raster(species_class_rast_quesnel_masked)
-# stack rasters
-covs_m1_quesnel = raster::stack(
-  lead_htop_raster_quesnel_masked,
-  elev_raster_quesnel_masked, 
-  slope_raster_quesnel_masked,
-  asp_cos_raster_quesnel_masked,
-  asp_sin_raster_quesnel_masked,
-  species_class_raster_quesnel_masked)
-# visualize 
-rasterVis::levelplot(covs_m1_quesnel)
-```
-
-### 2.7. Quesnel Lake: Modeling WSVHA Estimates with Random Forest Regression 
-
-```{r, eval=FALSE}
-wsvha_model1_randomForest_bootstrapped_demBased_100m_quesnelANDdevBlocks <- raster::predict(covs_m1_quesnel, tunedModel_rf_m1_full)
-wsvha_model1_randomForest_bootstrapped_demBased_100m_quesnelANDdevBlocks$layer[wsvha_model1_randomForest_bootstrapped_demBased_100m_quesnelANDdevBlocks$layer <= 0] = 0
-writeRaster(wsvha_model1_randomForest_bootstrapped_demBased_100m_quesnelANDdevBlocks, overwrite=TRUE,
-  filename = "/media/seamus/128GB_WORKD/data/raster/tcc/outputs/wsvha/bootstrapped/wsvha_model1_randomForest_bootstrapped_demBased_100m_quesnelANDdevBlocks_20220715vV.tif")
-plot(wsvha_model1_randomForest_bootstrapped_demBased_100m_quesnelANDdevBlocks, main="Quesnel WSVHA: Random Forest", cex.main=0.8, maxpixels=22000000)
-hist(wsvha_model1_randomForest_bootstrapped_demBased_100m_quesnelANDdevBlocks, main="Quesnel WSVHA: Random Forest", cex.main=0.8, maxpixels=22000000) 
-```
+# Outputs: Stem Maps Vs Stem Maps in Polygon, Heatmap and Histograms
 
 ```{r, fig.show='hold', out.width="50%", echo=FALSE}
-wsvha_model1_randomForest_bootstrapped_demBased_100m_quesnelANDdevBlocks = raster::raster("/media/seamus/128GB_WORKD/data/raster/tcc/outputs/wsvha/bootstrapped/wsvha_model1_randomForest_bootstrapped_demBased_100m_quesnelANDdevBlocks_20220715vV.tif")
-plot(wsvha_model1_randomForest_bootstrapped_demBased_100m_quesnelANDdevBlocks, main="Quesnel Developed Blocks WSVHA", cex.main=0.8, maxpixels=22000000)
-hist(wsvha_model1_randomForest_bootstrapped_demBased_100m_quesnelANDdevBlocks, main="Quesnel Developed Blocks WSVHA", cex.main=0.8, maxpixels=22000000) 
+stem_count_sf = st_as_sf(stem_count)
+plot(st_geometry(las_tile_ahbau_ttops_sf["treeID"]), add=TRUE, cex = 0.001, pch=19, col = 'red', alpha=0.8)
+plot(stem_count_raster, main="Quesnel Developed Blocks WSVHA", cex.main=0.8, maxpixels=22000000)
+hist(stem_count_raster, main="Quesnel Developed Blocks WSVHA", cex.main=0.8, maxpixels=22000000) 
 ```
 
