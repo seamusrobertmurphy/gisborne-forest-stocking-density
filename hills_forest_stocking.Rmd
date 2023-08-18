@@ -42,7 +42,7 @@ set.seed(123)
 
 ## Action:
 
-The following outlines the data processing and mapping outputs completed in the remapping exercise of the Hills Forest Area. To map potential differences between official data and newly LiDAR-derived attributes, two variables were tested: 'Stocking Density (stem/ha)' & 'Age Class'. Using metre-resolution DEM and DSM raster datasets from the LINZ website, a stem map was derived using variable window function. From this layer, a canopy model and stocking density rasters were mapped to compare values with stand records (HILL_0341-009). 'Age Class' was categorized roughly using available data of "Establishment Year" and then compared visually with classified canopy height. 
+Some notes on the data processing steps and mapping outputs completed in the remapping exercise of the Hills Forest Area. To map potential differences between official data layers and newly LiDAR-derived attributes, two variables were derived: 'Stocking Density (stem/ha)' & 'Age Class'. Using DEM and DSM datasets sourced from the LINZ website, a stem map was derived by applying a variable window algorithm and a default taper function. With the stem map feature, two rasters were calculated showing a canopy height model and stocking density per hectare. This allowed comparison with values at StandID level. 
 
 
 ## 1. Input: Merge & Reproject to LiDAR crs (or WKT)
@@ -62,10 +62,8 @@ dem_rast = terra::rast(dem_raster)
 elev_rast = terra::rast(dem_raster)
 chm_rast = (dsm_rast - dem_rast)
 
-# Sometimes possible to reproject to DEM/DSM custom projection
-## terra::crs(elev_rast) =  crs(chm_rast)
-
-# Cant handle it, reprojecting everything to WKT EPSG2193 
+# If possible, best reproject everything to DEM/DSM coordinates
+# but easier to assign official wkt starting off to avoid bugs
 terra::crs(elev_rast) =  "epsg:2193"
 terra::crs(chm_rast) =  "epsg:2193"
 terra::plot(elev_rast, main='DEM(m) - LINZ') 
