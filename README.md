@@ -183,4 +183,3 @@ plot(st_geometry(las_tile_ahbau_ttops_sf["treeID"]), add=TRUE, cex = 0.001, pch=
 plot(stem_count_raster, main="Quesnel Developed Blocks WSVHA", cex.main=0.8, maxpixels=22000000)
 hist(stem_count_raster, main="Quesnel Developed Blocks WSVHA", cex.main=0.8, maxpixels=22000000) 
 ```
-
