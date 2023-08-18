@@ -42,7 +42,8 @@ set.seed(123)
 
 ## Action:
 
-The following documents tasks undertaken to ReMap Hills Forest Area and identify changes from baseline datasets. Using LiDAR DEM and DSM, a canopy height model was derived from which a stem count was calculated according to Qi's algorithm (2020).
+The following outlines the data processing and mapping outputs completed in the remapping exercise of the Hills Forest Area. To map potential differences between official data and newly LiDAR-derived attributes, two variables were tested: 'Stocking Density (stem/ha)' & 'Age Class'. Using metre-resolution DEM and DSM raster datasets from the LINZ website, a stem map was derived using variable window function. From this layer, a canopy model and stocking density rasters were mapped to compare values with stand records (HILL_0341-009). 'Age Class' was categorized roughly using available data of "Establishment Year" and then compared visually with classified canopy height. 
+
 
 ## 1. Input: Merge & Reproject to LiDAR crs (or WKT)
 
