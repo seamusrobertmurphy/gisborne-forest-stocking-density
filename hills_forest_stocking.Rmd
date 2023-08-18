@@ -3,7 +3,8 @@ title: "Hills Forest ReMapping"
 author: "Summit-GIS"
 date: "17/08/2023"
 output: 
-  html_document:
+  github_document:
+    keep_md: TRUE
     toc: TRUE
     toc_depth: 5
     number_sections: FALSE
@@ -45,7 +46,7 @@ set.seed(123)
 Some notes on the data processing steps and mapping outputs completed in the remapping exercise of the Hills Forest Area. To map potential differences between official data layers and newly LiDAR-derived attributes, two variables were derived: 'Stocking Density (stem/ha)' & 'Age Class'. Using DEM and DSM datasets sourced from the LINZ website, a stem map was derived by applying a variable window algorithm and a default taper function. With the stem map feature, two rasters were calculated showing a canopy height model and stocking density per hectare. This allowed comparison with values at StandID level. 
 
 
-## 1. Input: Merge & Reproject to LiDAR crs (or WKT)
+## 1. Inputs: LiDAR Projection 
 
 ```{r, fig.show='hold', out.width="50%", eval=FALSE, echo=TRUE}
 # Merge chunks
@@ -70,7 +71,7 @@ terra::plot(elev_rast, main='DEM(m) - LINZ')
 terra::plot(chm_rast, main='CHM(m)') 
 ```
 
-## Input: Derive AOi & Mask
+## Input: Derive AOi & Apply Mask
 
 ```{r, fig.show='hold', out.width="50%", eval=FALSE, echo=TRUE}
 mask_sf = sf::read_sf("~/Desktop/Summit_Forestry/stands/HILL-0341-009.shp")
@@ -91,6 +92,9 @@ chm_raster = raster::raster(chm)
 writeRaster(elev_raster, filename = "~/Desktop/Summit_Forestry/dem/elev_raster.tif", overwrite=TRUE)
 writeRaster(chm_raster, filename = "~/Desktop/Summit_Forestry/dsm/chm_raster.tif", overwrite=TRUE)
 
+elev_raster = raster::raster("~/Desktop/Summit_Forestry/dem/elev_raster.tif")
+chm_raster = raster::raster("~/Desktop/Summit_Forestry/dem/chm_raster.tif")
+
 # Stack rasters & visualize
 ## covs_m1 = raster::stack(
 ##  chm_raster,
@@ -99,10 +103,11 @@ writeRaster(chm_raster, filename = "~/Desktop/Summit_Forestry/dsm/chm_raster.tif
 ## rasterVis::levelplot(covs_m1)
 ```
 
-## 2. Input: Derive Stem Map using ITD algorithm and 95% Canopy Height
+## Input: Derive Variable Window Function
 
 ```{r, fig.show='hold', out.width="50%", eval=FALSE}
-# jerry-rig with Plowrigths variable window function (North America Conifers)
+# Applied Plowright's window function https://cran.r-project.org/web/packages/ForestTools/vignettes/treetop_analysis.html
+# Needs function that is closer to site location/species
 wf_plowright<-function(x){ 
   a=0.05
   b=0.6 
@@ -113,13 +118,13 @@ window_plowright <- wf_plowright(heights)
 plot(heights, window_plowright, type = "l", ylim = c(0,12), xlab="point elevation (m)", ylab="window diameter (m)", main='Plowright, 2018; y=0.05*x+0.6')
 ```
 
-## Input: Derive Height & Stems from TreeTops using Plowright taper & 95% function
+## Input: Derive 95% Canopy Height & Stem Count Layers
 
 ```{r, eval=TRUE, fig.show='hold', out.width="33%", echo=FALSE}
 kernel <- matrix(1,3,3)
 chm_raster = focal(chm_rast, w = kernel, fun = median, na.rm = TRUE) %>% raster()
 ttops_1.5mfloor_plowright = ForestTools::vwf(chm_raster, wf_plowright, 1.5)
-writeOGR(ttops_1.5floor_plowright, "~/Desktop/Summit_Forestry/stands", "treetops_hills_009", driver = "ESRI Shapefile") # memory dump here
+writeOGR(ttops_1.5floor_plowright, "~/Desktop/Summit_Forestry/stands", "treetops_hills_009", driver = "ESRI Shapefile") 
 
 quant95 <- function(x, ...) 
   quantile(x, c(0.95), na.rm = TRUE)
