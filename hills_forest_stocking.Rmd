@@ -45,7 +45,7 @@ set.seed(123)
 
 The following documents tasks undertaken to ReMap Hills Forest Area and identify changes from baseline datasets. Using LiDAR DEM and DSM, a canopy height model was derived from which a stem count was calculated according to Qi's algorithm (2020).
 
-## 1. Import LiDAR & Filter
+## 1. Input: Merge, Filter, & Align CRS to LiDAR
 
 ```{r, eval=FALSE}
 # Merge chunks
@@ -63,7 +63,7 @@ terra::crs(elev_rast)
 terra::crs(chm_rast) 
 
 hills_mask_sf = sf::read_sf("~/Desktop/Summit_Forestry/stands/hills_forest_bdry.shp")
-hills_mask_rast = rasterize(vect(hills_mask_sf), elev_rast, touches = TRUE)
+hills_mask_rast = rasterize(vect(hills_mask_sf), chm_rast, touches = TRUE)
 # OR hills_mask_rast = terra::resample(hills_mask_rast, elev_rast, method="near")
 hills_mask_raster = raster::raster(hills_mask_rast)
 writeRaster(hills_mask_raster, filename = "~/Desktop/Summit_Forestry/stands/hills_mask_raster.tif", overwrite=TRUE)
@@ -76,6 +76,10 @@ elev_rast = terra::resample(elev_rast, hills_mask_rast, method="near")
 # Apply Mask
 elev = mask(elev_rast, hills_mask_rast, inverse=TRUE)
 chm = mask(chm_rast, hills_mask_rast, inverse=TRUE)
+elev_raster = raster::raster(elev)
+chm_raster = raster::raster(chm)
+writeRaster(elev_raster, filename = "~/Desktop/Summit_Forestry/dem/elev_raster.tif", overwrite=TRUE)
+writeRaster(chm_raster, filename = "~/Desktop/Summit_Forestry/dsm/chm_raster.tif", overwrite=TRUE)
 
 # CHEETSHEETS
 # Align Projections, Resolution & Subclasses
@@ -92,90 +96,25 @@ chm = mask(chm_rast, hills_mask_rast, inverse=TRUE)
 ## rasterVis::levelplot(covs_m1)
 ```
 
-## 2. Derive Stem Map using 1m Canopy Height Model
+## 2. Input: Derive Stem Map using ITD algorithm and 95% Canopy Height
 
 ```{r, fig.show='hold', out.width="50%", eval=FALSE}
-
-
-### 1.8. All-Species Areas: Modeling WSVHA Estimates with Random Forest Regression
-
-```{r, fig.show='hold', out.width="50%", eval=FALSE}
-tuneResult_rf_m1_full <- tune.randomForest(
-  X_m1_boot, y_m1_boot,
-  mtry = c(2:10), ntree = 50,
-  tunecontrol = tune.control(sampling = "cross", cross = 10),
-  preProcess = c('YeoJohnson', 'scale', 'center', 'corr'))
-
-tuneResult_rf_m1_train <- tune.randomForest(
-  X_train_m1_boot, y_train_m1_boot, 
-  mtry = c(2:10), ntree = 50,
-  tunecontrol = tune.control(sampling = "cross", cross = 10), 
-  preProcess = c('YeoJohnson', 'scale', 'center', 'corr'))
-tunedModel_rf_m1_full <- tuneResult_rf_m1_full$best.model
-tunedModel_rf_m1_train <- tuneResult_rf_m1_train$best.model
-tunedModel_rf_m1 = predict(tunedModel_rf_m1_full, newdata=faib_vri_true_m1_df, type = "response")
-tunedModel_rf_m1_test = predict(tunedModel_rf_m1_train, newdata=test_m1, type = "response")
-save(tunedModel_rf_m1_full, file = "/media/seamus/128GB_WORKD/data/models/tcc-wsvha/wsvha_model1_randomForest_bootstrapped_demBased_allAreas_20220731.RData")
-tuneResult_rf_m1_full
-R2(tunedModel_rf_m1, faib_vri_true_m1_df$wsvha_L)
-MAE(tunedModel_rf_m1, faib_vri_true_m1_df$wsvha_L)
-RMSE(tunedModel_rf_m1, faib_vri_true_m1_df$wsvha_L)
-MAE(tunedModel_rf_m1_test, test_m1$wsvha_L)
-RMSE(tunedModel_rf_m1_test, test_m1$wsvha_L)
-
-wsvha_model1_randomForest_bootstrapped_demBased_100m_allSpeciesAreas <- raster::predict(covs_m1_allSpeciesAreas, tunedModel_rf_m1_full)
-wsvha_model1_randomForest_bootstrapped_demBased_100m_allSpeciesAreas$layer[wsvha_model1_randomForest_bootstrapped_demBased_100m_allSpeciesAreas$layer <= 0] = 0
-writeRaster(wsvha_model1_randomForest_bootstrapped_demBased_100m_allSpeciesAreas, overwrite=TRUE,
-  filename = "/media/seamus/128GB_WORKD/data/raster/tcc/outputs/wsvha/bootstrapped/wsvha_model1_randomForest_bootstrapped_demBased_100m_allSpeciesAreas_20220731.tif")
-plot(wsvha_model1_randomForest_bootstrapped_demBased_100m_allSpeciesAreas, main="WSVHA for all-Species Operating Areas: Random Forest", cex.main=0.8, maxpixels=22000000)
-hist(wsvha_model1_randomForest_bootstrapped_demBased_100m_allSpeciesAreas, main="WSVHA for all-Species Operating Areas: Random Forest", cex.main=0.8, maxpixels=22000000) 
+# jerry-rig with Plowrigths variable window function (North America Conifers)
+wf_plowright<-function(x){ 
+  a=0.05
+  b=0.6 
+  y<-a*x+b 
+  return(y)}
+heights <- seq(0,40,0.5)
+window_plowright <- wf_plowright(heights)
+plot(heights, window_plowright, type = "l", ylim = c(0,12), xlab="point elevation (m)", ylab="window diameter (m)", main='Plowright, 2018; y=0.05*x+0.6')
 ```
 
-```{r, fig.show='hold', out.width="50%", echo=FALSE}
-wsvha_model1_randomForest_bootstrapped_demBased_100m_allSpeciesAreas = terra::rast("/media/seamus/128GB_WORKD/data/raster/tcc/outputs/wsvha/bootstrapped/wsvha_model1_randomForest_bootstrapped_demBased_100m_allSpeciesAreas_20220731.tif")
-plot(wsvha_model1_randomForest_bootstrapped_demBased_100m_allSpeciesAreas, main="WSVHA for all-Species Operating Areas: Random Forest", cex.main=0.8, maxpixels=22000000)
-hist(wsvha_model1_randomForest_bootstrapped_demBased_100m_allSpeciesAreas, main="WSVHA for all-Species Operating Areas: Random Forest", cex.main=0.8, maxpixels=22000000) 
-```
+### Input: Height & Stems
 
-## 2. Quesnel Lake: Includes areas for all species (Fd and non-Fd stands), and developed cutblocks for validation purposes 
+```{r, eval=TRUE}
+chm_raster = focal(chm_rast, w = kernel, fun = median, na.rm = TRUE) %>% raster()
 
-### 2.1. Quesnel Lake: Import DEM & CHM
-
-```{r, eval=FALSE}
-filez_be_quesnel = list.files("/media/seamus/Ubuntu 22_04 LTS amd64/mosaics/quesnel/BareEarth", full.names = T, all.files = FALSE, pattern = '.tif$') 
-elev_raster_list_quesnel <- lapply(filez_be_quesnel, raster)
-elev_raster_quesnel = do.call(merge, c(elev_raster_list_quesnel, tolerance = 1))
-elev_rast_quesnel = terra::rast(elev_raster_quesnel)
-terra::crs(elev_rast_quesnel) = "epsg:3005"
-elev_rast_quesnel = terra::aggregate(elev_rast_quesnel, fact = 100, fun = mean)
-writeRaster(elev_rast_quesnel, filename = "/media/seamus/Ubuntu 22_04 LTS amd64/mosaics/quesnel/elev_raster_100m_quesnel.tif", overwrite=TRUE)
-elev_raster_quesnel = raster::raster("/media/seamus/Ubuntu 22_04 LTS amd64/mosaics/quesnel/elev_raster_100m_quesnel.tif")
-elev_rast_quesnel = terra::rast(elev_raster_quesnel)
-
-filez_vh_quesnel = list.files("/media/seamus/Ubuntu 22_04 LTS amd64/mosaics/quesnel/VegHt", full.names = T, all.files = FALSE, pattern = '.tif$') 
-lead_htop_raster_list_quesnel <- lapply(filez_vh_quesnel, raster)
-lead_htop_raster_quesnel = do.call(merge, c(lead_htop_raster_list_quesnel, tolerance = 1))
-lead_htop_rast_quesnel = terra::rast(lead_htop_raster_quesnel)
-terra::crs(lead_htop_rast_quesnel) = "epsg:3005"
-lead_htop_rast_quesnel = terra::aggregate(lead_htop_rast_quesnel, fact = 100, fun = mean)
-lead_htop_rast_quesnel = terra::resample(lead_htop_rast_quesnel, elev_rast_quesnel)
-writeRaster(lead_htop_rast_quesnel, filename = "/media/seamus/Ubuntu 22_04 LTS amd64/mosaics/quesnel/lead_htop_raster_100m_quesnel.tif", overwrite=TRUE)
-lead_htop_raster_quesnel = raster::raster("/media/seamus/Ubuntu 22_04 LTS amd64/mosaics/quesnel/lead_htop_raster_100m_quesnel.tif")
-lead_htop_rast_quesnel = terra::rast(lead_htop_raster_quesnel)
-```
-
-```{r, fig.show='hold', out.width="50%", echo=FALSE}
-elev_raster_quesnel = raster::raster("/media/seamus/Ubuntu 22_04 LTS amd64/mosaics/quesnel/elev_raster_100m_quesnel.tif")
-elev_rast_quesnel = terra::rast(elev_raster_quesnel)
-lead_htop_raster_quesnel = raster::raster("/media/seamus/Ubuntu 22_04 LTS amd64/mosaics/quesnel/lead_htop_raster_100m_quesnel.tif")
-lead_htop_rast_quesnel = terra::rast(lead_htop_raster_quesnel)
-terra::plot(elev_rast_quesnel)
-terra::plot(lead_htop_rast_quesnel)
-```
-
-### 2.2. Quesnel Lake: Derive Terrain Rasters
-
-```{r, eval=FALSE}
 slope_rast_quesnel = terra::terrain(elev_rast_quesnel, v="slope", unit="degrees", neighbors=8)
 aspect_rast_quesnel = terra::terrain(elev_rast_quesnel, v="aspect", unit="degrees", neighbors=8)
 asp_cos_rast_quesnel = cos((aspect_rast_quesnel*pi)/180)
