@@ -1,14 +1,3 @@
----
-title: "Hills Forest ReMapping"
-author: "Summit-GIS"
-date: "17/08/2023"
-output: 
-  html_document:
-    toc: TRUE
-    toc_depth: 5
-    number_sections: FALSE
-    df_print: tibble
----
 
 ```{r setup, echo=FALSE, message=FALSE,warning=FALSE, error=FALSE}
 library(sf)
