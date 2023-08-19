@@ -1,35 +1,4 @@
 
-```{r setup, echo=FALSE, message=FALSE,warning=FALSE, error=FALSE}
-library(sf)
-library(sp)
-library(terra)
-library(raster)
-library(dplyr)
-library(caret)
-library(caretEnsemble)
-library(ForestTools)
-library(lidR)
-library(randomForest)
-library(e1071)
-library(rgdal)
-library(rgeos)
-library(Rcpp)
-library(rmarkdown)
-library(knitr)
-library(MASS)
-library(car)
-library(RColorBrewer)
-#devtools::install_github(("gearslaboratory/gdalUtils"))
-library(gdalUtils)
-#library(gdalUtilities)
-#webshot::install_phantomjs(force = TRUE)
-#knit_hooks$set(webgl = hook_webgl)
-#knit_hooks$set(rgl.static = hook_rgl)
-knitr::opts_chunk$set(echo = TRUE, warning=FALSE, error=FALSE, message = FALSE)
-set.seed(123)
-# ShortCUt l.95
-```
-
 ## Action: 
 
 Some notes on the data processing steps and mapping outputs completed in the remapping exercise of the Hills Forest Area. To map potential differences between official data layers and newly LiDAR-derived attributes, two variables were derived: 'Stocking Density (stem/ha)' & 'Age Class'. Using DEM and DSM datasets sourced from the LINZ website, a stem map was derived by applying a variable window algorithm and a default taper function. With the stem map feature, two rasters were calculated showing a canopy height model and stocking density per hectare. This allowed comparison with values at StandID level. 
