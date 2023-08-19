@@ -4,12 +4,10 @@ author: "Summit-GIS"
 date: "17/08/2023"
 output: 
   github_document:
-    keep_md: TRUE
     toc: TRUE
     toc_depth: 5
     number_sections: FALSE
     df_print: tibble
-    latex_engine: xelatex
 ---
 
 ```{r setup, echo=FALSE, message=FALSE,warning=FALSE, error=FALSE}
@@ -46,7 +44,16 @@ set.seed(123)
 
 Some notes on the data processing steps and mapping outputs completed in the remapping exercise of the Hills Forest Area. To map potential differences between official data layers and newly LiDAR-derived attributes, two variables were derived: 'Stocking Density (stem/ha)' & 'Age Class'. Using DEM and DSM datasets sourced from the LINZ website, a stem map was derived by applying a variable window algorithm and a default taper function. With the stem map feature, two rasters were calculated showing a canopy height model and stocking density per hectare. This allowed comparison with values at StandID level. 
 
-
+```{r, fig.show='hold', out.width="50%", eval=TRUE, echo=FALSE}
+dem_raster = raster::raster("~/Desktop/Summit_Forestry/dem/dem_filled.tif")
+dsm_raster = raster::raster("~/Desktop/Summit_Forestry/dsm/dsm_filled.tif")
+dem_rast = terra::rast(dem_raster)
+dsm_rast = terra::rast(dsm_raster)
+terra::crs(dem_rast) =  "epsg:2193"
+terra::crs(dsm_rast) =  "epsg:2193"
+terra::plot(dem_rast, main='DEM (Source: LINZ)') 
+terra::plot(dsm_rast, main='DSM (Source: LINZ') 
+```
 ## 1. Inputs: LiDAR Projection 
 
 ```{r, fig.show='hold', out.width="50%", eval=FALSE, echo=TRUE}
@@ -59,56 +66,55 @@ dem_raster = do.call(merge, c(dem_raster_list, tolerance = 1))
 dsm_raster = do.call(merge, c(dsm_raster_list, tolerance = 1))
 writeRaster(dem_raster, filename = "~/Desktop/Summit_Forestry/dem/dem_raster.tif", overwrite=TRUE)
 writeRaster(dsm_raster, filename = "~/Desktop/Summit_Forestry/dsm/dsm_raster.tif", overwrite=TRUE)
-dsm_rast = terra::rast(dsm_raster)
-dem_rast = terra::rast(dem_raster)
-elev_rast = terra::rast(dem_raster)
-chm_rast = (dsm_rast - dem_rast)
 
-# If possible, best reproject everything to DEM/DSM coordinates
-# but easier to assign official wkt starting off to avoid bugs
-terra::crs(elev_rast) =  "epsg:2193"
-terra::crs(chm_rast) =  "epsg:2193"
-terra::plot(elev_rast, main='DEM(m) - LINZ') 
-terra::plot(chm_rast, main='CHM(m)') 
+# Rasterize and fill sinks
+fill_sinks(dem = "dem_mosaic.tif", out = "dem_fill.tif", size = 1, overwrite = TRUE)
+fill_sinks(dsm = "dsm_mosaic.tif", out = "dsm_fill.tif", size = 1, overwrite = TRUE)
+writeRaster(dem_fill, filename = "~/Desktop/Summit_Forestry/dem/dem_filled.tif", overwrite=TRUE)
+writeRaster(dsm_fill, filename = "~/Desktop/Summit_Forestry/dsm/dsm_filled.tif", overwrite=TRUE)
+
+# Assign EPGS2193/NZGD2000
+dem_rast = terra::rast(dem_filled)
+dsm_rast = terra::rast(dsm_filled)
+terra::crs(dem_rast) =  "epsg:2193"
+terra::crs(dsm_rast) =  "epsg:2193"
+terra::plot(dem_rast, main='DEM (Source: LINZ)') 
+terra::plot(dsm_rast, main='DSM (Source: LINZ') 
 ```
 
-## Input: Derive AOi & Apply Mask
+## Input: Derive AOi & filter layers
 
-```{r, fig.show='hold', out.width="50%", eval=FALSE, echo=TRUE}
+```{r, fig.show='hold', out.width="50%", eval=TRUE, echo=TRUE}
+# Derive mask from single cutblock shapefile: HILL-0341-009
 mask_sf = sf::read_sf("~/Desktop/Summit_Forestry/stands/HILL-0341-009.shp")
-mask_rast = rasterize(vect(mask_sf), chm_rast, touches = TRUE)
-mask_rast = terra::resample(mask_rast, chm_rast, method="near") # choose from one of these two
-mask_raster = raster::raster(mask_rast)
-writeRaster(mask_raster, filename = "~/Desktop/Summit_Forestry/stands/mask_raster_009.tif", overwrite=TRUE)
+mask_rast = rasterize(vect(mask_sf), dem_rast, touches = TRUE)
 terra::crs(mask_rast) =  "epsg:2193"
-# elev_rast = terra::resample(elev_rast, chm_rast, method="near")
-# chm_rast = terra::resample(chm_rast, mask_rast, method="near")
 ggplot(mask_sf) + geom_sf(aes(fill = 'red'), show.legend = FALSE)
 
-# Apply Mask
-elev = mask(elev_rast, mask_rast, inverse=TRUE)
-chm = mask(chm_rast, mask_rast, inverse=TRUE)
+# Align & apply mask
+mask_rast = terra::resample(mask_rast, dsm_rast, method="near")
+dem_rast = terra::resample(dem_rast, dsm_rast, method="near")
+dem_masked = mask(dem_rast, mask_rast, inverse=FALSE)
+dsm_masked = mask(dsm_rast, mask_rast, inverse=FALSE)
+plot(dem_masked, main="DEM masked")
+plot(dsm_masked, main = "DSM masked")
+
+# Derive CHM & save as rasters
+elev = dem_masked 
+chm = dsm_masked - dem_masked
 elev_raster = raster::raster(elev)
 chm_raster = raster::raster(chm)
 writeRaster(elev_raster, filename = "~/Desktop/Summit_Forestry/dem/elev_raster.tif", overwrite=TRUE)
 writeRaster(chm_raster, filename = "~/Desktop/Summit_Forestry/dsm/chm_raster.tif", overwrite=TRUE)
-
-elev_raster = raster::raster("~/Desktop/Summit_Forestry/dem/elev_raster.tif")
-chm_raster = raster::raster("~/Desktop/Summit_Forestry/dem/chm_raster.tif")
-
-# Stack rasters & visualize
-## covs_m1 = raster::stack(
-##  chm_raster,
-##  elev_raster, 
-##  mask_raster)
-## rasterVis::levelplot(covs_m1)
+plot(elev, main="Elevation (m)")
+plot(chm, main="Canopy Height (m)")
 ```
 
 ## Input: Derive Variable Window Function
 
-```{r, fig.show='hold', out.width="50%", eval=FALSE}
-# Applied Plowright's window function https://cran.r-project.org/web/packages/ForestTools/vignettes/treetop_analysis.html
-# Needs function that is closer to site location/species
+```{r, fig.show='hold', out.width="50%", eval=TRUE}
+# Used Plowright's window function as temporary fix here: 
+# https://cran.r-project.org/web/packages/ForestTools/vignettes/treetop_analysis.html
 wf_plowright<-function(x){ 
   a=0.05
   b=0.6 
@@ -120,8 +126,14 @@ plot(heights, window_plowright, type = "l", ylim = c(0,12), xlab="point elevatio
 ```
 
 ## Input: Derive 95% Canopy Height & Stem Count Layers
+```{r, eval=TRUE, fig.show='hold', out.width="33%", echo=FALSE, eval=TRUE}
+stem_count_ha_raster = raster::raster(filename = "~/Desktop/Summit_Forestry/stands/stem_count_ha.tif")
+chm_95height_raster = raster::raster(filename = "~/Desktop/Summit_Forestry/stands/chm_95height.tif")
+plot(stem_count_ha_raster)
+plot(chm_95height_raster)
+```
 
-```{r, eval=TRUE, fig.show='hold', out.width="33%", echo=FALSE}
+```{r, eval=TRUE, fig.show='hold', out.width="33%", echo=TRUE, eval=FALSE}
 kernel <- matrix(1,3,3)
 chm_raster = focal(chm_rast, w = kernel, fun = median, na.rm = TRUE) %>% raster()
 ttops_1.5mfloor_plowright = ForestTools::vwf(chm_raster, wf_plowright, 1.5)
@@ -138,15 +150,17 @@ chm_95height_raster = ttops_1.5mfloor_height[["height95thQuantile"]]
 raster::writeRaster(chm_95height_raster, filename = "~/Desktop/Summit_Forestry/stands/chm_95height.tif", overwrite=TRUE)
 
 stem_count_raster = ttops_1.5mfloor_height[["TreeCount"]]
-stem_count_sf = st_as_sf(stem_count_raster)
-stem_count_rast = rasterize(vect(stem_count_sf), chm_raster, fun = sum, touches = TRUE)
-stem_count_ha_rast = stem_count_rast*100 #aggregate to 100m resolution for stems per hectare
-stem_count_ha_raster = raster::raster(stem_count_ha_rast)
+raster::writeRaster(stem_count_raster, filename = "~/Desktop/Summit_Forestry/stands/stem_count.tif", overwrite=TRUE)
+stem_count_rast = terra::rast("~/Desktop/Summit_Forestry/stands/stem_count.tif")
+stem_count_ha_rast = stem_count_rast*100 #aggregate to 100m^2 for stems per hectare
+stem_count_ha_rast
+stem_count_ha_raster = as(stem_count_ha_rast, "SpatRaster")
 raster::writeRaster(stem_count_ha_raster, filename = "~/Desktop/Summit_Forestry/stands/stem_count_ha.tif", overwrite=TRUE)
 
+stem_count_ha_sf = st_as_sf(ttops_1.5mfloor_plowright)
 mypalette<-brewer.pal(8,"Greens")
 plot(chm_95height_raster, col = mypalette, alpha=0.6)
-plot(st_geometry(stem_count_sf["treeID"]), add=TRUE, cex = 0.001, pch=19, col = 'red', alpha=0.8) 
+plot(st_geometry(stem_count_ha_sf["treeID"]), add=TRUE, cex = 0.001, pch=19, col = 'red', alpha=0.8) 
 
 # Point Cloud Pipeline (or smaller areas with lighter memory tasks...)
 ## stem_count_sp = find_trees(chm_95height, lmf(wf_plowright), uniqueness = "bitmerge")
@@ -172,16 +186,7 @@ plot(st_geometry(stem_count_sf["treeID"]), add=TRUE, cex = 0.001, pch=19, col = 
 ## stem_count_ha_raster = raster::raster(stem_count_ha_rast, filename = "~/Desktop/Summit_Forestry/stands/stem_count_ha_raster.tif")
 ## plot(segmented_crowns_rast)
 ## plot(stem_count_ha_raster)
-
-
 ```
 
-# Outputs: Compare Stem Maps in Polygon, Heatmap and Histograms
 
-```{r, fig.show='hold', out.width="50%", echo=FALSE}
-stem_count_sf = st_as_sf(stem_count)
-plot(st_geometry(las_tile_ahbau_ttops_sf["treeID"]), add=TRUE, cex = 0.001, pch=19, col = 'red', alpha=0.8)
-plot(stem_count_raster, main="Quesnel Developed Blocks WSVHA", cex.main=0.8, maxpixels=22000000)
-hist(stem_count_raster, main="Quesnel Developed Blocks WSVHA", cex.main=0.8, maxpixels=22000000) 
-```
 
