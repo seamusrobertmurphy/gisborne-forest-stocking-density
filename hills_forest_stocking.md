@@ -4,15 +4,14 @@ Summit-GIS
 17/08/2023
 
 - <a href="#action" id="toc-action">Action:</a>
-- <a href="#input-derive-aoi--filter-layers"
-  id="toc-input-derive-aoi--filter-layers">Input: Derive AOi &amp; filter
-  layers</a>
-- <a href="#input-derive-variable-window-function"
-  id="toc-input-derive-variable-window-function">Input: Derive Variable
-  Window Function</a>
-- <a href="#input-derive-95-canopy-height--stem-count-layers"
-  id="toc-input-derive-95-canopy-height--stem-count-layers">Input: Derive
-  95% Canopy Height &amp; Stem Count Layers</a>
+- <a href="#input-aoi--masking-layers"
+  id="toc-input-aoi--masking-layers">Input: AOI &amp; Masking layers</a>
+- <a href="#input-variable-window-function"
+  id="toc-input-variable-window-function">Input: Variable Window
+  Function</a>
+- <a href="#output-95-canopy-height--stem-count-layers"
+  id="toc-output-95-canopy-height--stem-count-layers">Output: 95% Canopy
+  Height &amp; Stem Count Layers</a>
 
 ## Action:
 
@@ -55,7 +54,7 @@ terra::plot(dem_rast, main='DEM (Source: LINZ)')
 terra::plot(dsm_rast, main='DSM (Source: LINZ') 
 ```
 
-## Input: Derive AOi & filter layers
+## Input: AOI & Masking layers
 
 ``` r
 # Derive mask from single cutblock shapefile: HILL-0341-009
@@ -85,7 +84,7 @@ plot(chm, main="Canopy Height (m)")
 
 <img src="hills_forest_stocking_files/figure-gfm/unnamed-chunk-3-1.png" width="50%" /><img src="hills_forest_stocking_files/figure-gfm/unnamed-chunk-3-2.png" width="50%" /><img src="hills_forest_stocking_files/figure-gfm/unnamed-chunk-3-3.png" width="50%" /><img src="hills_forest_stocking_files/figure-gfm/unnamed-chunk-3-4.png" width="50%" /><img src="hills_forest_stocking_files/figure-gfm/unnamed-chunk-3-5.png" width="50%" />
 
-## Input: Derive Variable Window Function
+## Input: Variable Window Function
 
 ``` r
 # Used Plowright's window function as temporary fix here: 
@@ -102,7 +101,7 @@ plot(heights, window_plowright, type = "l", ylim = c(0,12), xlab="point elevatio
 
 <img src="hills_forest_stocking_files/figure-gfm/unnamed-chunk-4-1.png" width="50%" />
 
-## Input: Derive 95% Canopy Height & Stem Count Layers
+## Output: 95% Canopy Height & Stem Count Layers
 
 ``` r
 kernel <- matrix(1,3,3)
