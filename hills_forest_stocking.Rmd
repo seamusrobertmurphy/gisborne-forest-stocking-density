@@ -156,7 +156,7 @@ plot(st_geometry(stem_count_ha_sf["treeID"]), cex = 0.2, pch="+", col = 'red', l
 plot(stem_count_ha, main="Raster Stems/ha (10m Res)")
 ```
 
-```{r, eval=TRUE, fig.show='hold', out.width="33%", echo=FALSE, eval=TRUE}
+```{r, eval=TRUE, fig.show='hold', out.width="100%", echo=FALSE, eval=TRUE}
 ttops_1.5mfloor_plowright <- readOGR(dsn = "~/Desktop/Summit_Forestry/stands", layer = "treetops_hills_009_masked")
 stem_count_raster = raster::raster("~/Desktop/Summit_Forestry/stands/stem_count_10m.tif")
 chm_95height_raster = raster::raster("~/Desktop/Summit_Forestry/stands/chm_95height_10m.tif")
