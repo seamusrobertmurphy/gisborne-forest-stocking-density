@@ -1,21 +1,34 @@
+Hills Forest ReMapping
+================
+Summit-GIS
+17/08/2023
 
-## Action: 
+- <a href="#action" id="toc-action">Action:</a>
+- <a href="#input-aoi--masking-layers"
+  id="toc-input-aoi--masking-layers">Input: AOI &amp; Masking layers</a>
+- <a href="#input-variable-window-function"
+  id="toc-input-variable-window-function">Input: Variable Window
+  Function</a>
+- <a href="#output-95-canopy-height--stem-count-layers"
+  id="toc-output-95-canopy-height--stem-count-layers">Output: 95% Canopy
+  Height &amp; Stem Count Layers</a>
 
-Some notes on the data processing steps and mapping outputs completed in the remapping exercise of the Hills Forest Area. To map potential differences between official data layers and newly LiDAR-derived attributes, two variables were derived: 'Stocking Density (stem/ha)' & 'Age Class'. Using DEM and DSM datasets sourced from the LINZ website, a stem map was derived by applying a variable window algorithm and a default taper function. With the stem map feature, two rasters were calculated showing a canopy height model and stocking density per hectare. This allowed comparison with values at StandID level. 
+## Action:
 
-```{r, fig.show='hold', out.width="50%", eval=TRUE, echo=FALSE}
-dem_raster = raster::raster("~/Desktop/Summit_Forestry/dem/dem_filled.tif")
-dsm_raster = raster::raster("~/Desktop/Summit_Forestry/dsm/dsm_filled.tif")
-dem_rast = terra::rast(dem_raster)
-dsm_rast = terra::rast(dsm_raster)
-terra::crs(dem_rast) =  "epsg:2193"
-terra::crs(dsm_rast) =  "epsg:2193"
-terra::plot(dem_rast, main='DEM (Source: LINZ)') 
-terra::plot(dsm_rast, main='DSM (Source: LINZ') 
-```
-## 1. Inputs: LiDAR Projection 
+Some notes on the data processing steps and mapping outputs completed in
+the remapping exercise of the Hills Forest Area. To map potential
+differences between official data layers and newly LiDAR-derived
+attributes, two variables were derived: ‘Stocking Density (stem/ha)’ &
+‘Age Class’. Using DEM and DSM datasets sourced from the LINZ website, a
+stem map was derived by applying a variable window algorithm and a
+default taper function. With the stem map feature, two rasters were
+calculated showing a canopy height model and stocking density per
+hectare. This allowed comparison with values at StandID level.
 
-```{r, fig.show='hold', out.width="50%", eval=FALSE, echo=TRUE}
+<img src="hills_forest_stocking_files/figure-gfm/unnamed-chunk-1-1.png" width="50%" /><img src="hills_forest_stocking_files/figure-gfm/unnamed-chunk-1-2.png" width="50%" />
+\## 1. Inputs: LiDAR Projection
+
+``` r
 # Merge chunks
 filez_dem = list.files("~/Desktop/Summit_Forestry/dem", full.names = T, all.files = FALSE, pattern = '.tif$') 
 filez_dsm = list.files("~/Desktop/Summit_Forestry/dsm", full.names = T, all.files = FALSE, pattern = '.tif$') 
@@ -43,7 +56,7 @@ terra::plot(dsm_rast, main='DSM (Source: LINZ')
 
 ## Input: AOI & Masking layers
 
-```{r, fig.show='hold', out.width="50%", eval=TRUE, echo=TRUE}
+``` r
 # Derive mask from single cutblock shapefile: HILL-0341-009
 mask_sf = sf::read_sf("~/Desktop/Summit_Forestry/stands/HILL-0341-009.shp")
 mask_rast = rasterize(vect(mask_sf), dem_rast, touches = TRUE)
@@ -69,9 +82,11 @@ plot(elev, main="Elevation (m)")
 plot(chm, main="Canopy Height (m)")
 ```
 
+<img src="hills_forest_stocking_files/figure-gfm/unnamed-chunk-3-1.png" width="50%" /><img src="hills_forest_stocking_files/figure-gfm/unnamed-chunk-3-2.png" width="50%" /><img src="hills_forest_stocking_files/figure-gfm/unnamed-chunk-3-3.png" width="50%" /><img src="hills_forest_stocking_files/figure-gfm/unnamed-chunk-3-4.png" width="50%" /><img src="hills_forest_stocking_files/figure-gfm/unnamed-chunk-3-5.png" width="50%" />
+
 ## Input: Variable Window Function
 
-```{r, fig.show='hold', out.width="50%", eval=TRUE}
+``` r
 # Used Plowright's window function as temporary fix here: 
 # https://cran.r-project.org/web/packages/ForestTools/vignettes/treetop_analysis.html
 wf_plowright<-function(x){ 
@@ -84,9 +99,11 @@ window_plowright <- wf_plowright(heights)
 plot(heights, window_plowright, type = "l", ylim = c(0,12), xlab="point elevation (m)", ylab="window diameter (m)", main='Plowright, 2018; y=0.05*x+0.6')
 ```
 
+<img src="hills_forest_stocking_files/figure-gfm/unnamed-chunk-4-1.png" width="50%" />
+
 ## Output: 95% Canopy Height & Stem Count Layers
 
-```{r, eval=TRUE, fig.show='hold', out.width="33%", echo=TRUE, eval=FALSE}
+``` r
 kernel <- matrix(1,3,3)
 chm_raster = focal(chm, w = kernel, fun = median, na.rm = TRUE) %>% raster()
 ttops_1.5mfloor_plowright = ForestTools::vwf(chm_raster, wf_plowright, 1.5)
@@ -114,17 +131,9 @@ plot(st_geometry(stem_count_ha_sf["treeID"]), cex = 0.2, pch="+", col = 'red', l
 plot(stem_count_ha, main="Raster Stems/ha (10m Res)")
 ```
 
-```{r, eval=TRUE, fig.show='hold', out.width="33%", echo=FALSE, eval=TRUE}
-ttops_1.5mfloor_plowright <- readOGR(dsn = "~/Desktop/Summit_Forestry/stands", layer = "treetops_hills_009_masked")
-stem_count_raster = raster::raster("~/Desktop/Summit_Forestry/stands/stem_count_10m.tif")
-chm_95height_raster = raster::raster("~/Desktop/Summit_Forestry/stands/chm_95height_10m.tif")
-mypalette<-brewer.pal(8,"Greens")
-stem_count_rast = terra::rast(stem_count_raster)
-stem_count_ha = 10*stem_count_rast
-chm_95height_rast = terra::rast(chm_95height_raster)
-stem_count_ha_sf = st_as_sf(ttops_1.5mfloor_plowright)
-{plot(chm_95height_rast, col = mypalette, alpha=0.6, main="Stem Map over 95% CHM")  
-plot(st_geometry(stem_count_ha_sf["treeID"]), cex = 0.2, pch="+", col = 'red', lwd=1, alpha=1, add=TRUE) }
-plot(stem_count_ha, main="Raster Stems/ha (10m Res)")
-```
+    ## OGR data source with driver: ESRI Shapefile 
+    ## Source: "/home/seamus/Desktop/Summit_Forestry/stands", layer: "treetops_hills_009_masked"
+    ## with 34585 features
+    ## It has 3 fields
 
+<img src="hills_forest_stocking_files/figure-gfm/unnamed-chunk-6-1.png" width="33%" /><img src="hills_forest_stocking_files/figure-gfm/unnamed-chunk-6-2.png" width="33%" />
