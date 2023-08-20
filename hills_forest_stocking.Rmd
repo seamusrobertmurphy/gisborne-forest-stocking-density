@@ -8,6 +8,7 @@ output:
     toc_depth: 5
     number_sections: FALSE
     df_print: tibble
+  urlcolor: blue
 ---
 
 ```{r setup, echo=FALSE, message=FALSE,warning=FALSE, error=FALSE}
@@ -41,9 +42,9 @@ set.seed(123)
 # ShortCUt l.95
 ```
 
-## Action: 
+## Action:
 
-Some notes on the data processing steps and mapping outputs completed in the remapping exercise of the Hills Forest Area. To map potential differences between official data layers and newly LiDAR-derived attributes, two variables were derived: 'Stocking Density (stem/ha)' & 'Age Class'. Age class was drawn approximately from a canopy height model, which was computed using the following functions. Using DEM and DSM datasets sourced from the LINZ website, a stem map was derived by applying a variable window algorithm and a default taper function. With the stem map feature, two rasters were calculated showing a canopy height model and stocking density per hectare. This allowed some rough comparisons with values at StandID level using Establishment year and Stocking in stand records provided. 
+Some notes on the data processing steps and mapping outputs completed in the remapping exercise of the Hills Forest Area. To map changes occurring between original stands records and newly LiDAR-derived attributes, two variables were derived: 'Stocking Density (stem/ha)' & 'Age Class'. Age class was drawn approximately from a canopy height model, which was computed using the following functions. Using DEM and DSM datasets sourced from the LINZ website, a stem map was derived by applying a variable window algorithm and a default taper function. With the stem map feature, two rasters were calculated showing a canopy height model and stocking density per hectare. This allowed some rough comparisons with values at StandID level using Establishment year and Stocking in stand records provided. Scripts, chunk outputs, and markdown reports were stored at the repository 'hills_forest_stocking': <https://github.com/seamusrobertmurphy/hills_forest_stocking>
 
 ```{r, fig.show='hold', out.width="50%", eval=TRUE, echo=FALSE}
 dem_raster = raster::raster("~/Desktop/Summit_Forestry/dem/dem_filled.tif")
@@ -55,7 +56,10 @@ terra::crs(dsm_rast) =  "epsg:2193"
 terra::plot(dem_rast, main='DEM (Source: LINZ)') 
 terra::plot(dsm_rast, main='DSM (Source: LINZ') 
 ```
-## 1. Inputs: LiDAR Projection 
+
+## 1. Inputs: LiDAR Projection
+
+No custom projection found with original LiDAR files. Instead everything was re-assigned or reporojected to EPSG2193/NZGD2000. Chunk below allow for bulk loading and merging of LiDAR tiles into raster mosaic. Sinks were filled using inverse watershed algorithm by Wang & Liu (2020) with following settings.
 
 ```{r, fig.show='hold', out.width="50%", eval=FALSE, echo=TRUE}
 # Merge chunks
@@ -83,14 +87,18 @@ terra::plot(dem_rast, main='DEM (Source: LINZ)')
 terra::plot(dsm_rast, main='DSM (Source: LINZ') 
 ```
 
-## Input: AOI & Masking layers
+## 2. Inputs: AOI & Masking layers
+
+Further work needed here on filtering out non-stand areas such as roads and biodiversity features. However, 1.5m floor threshold is later inputted to the stem detection algorithm, which cancels out a lot of non-canopy areas automatically. Final 10m and 20m resolution rasters show some of this feature filtering. AOI filter here was used for visualization purposes only, showing results for single cutblock HILL-0341-009.
 
 ```{r, fig.show='hold', out.width="50%", eval=TRUE, echo=TRUE}
 # Derive mask from single cutblock shapefile: HILL-0341-009
 mask_sf = sf::read_sf("~/Desktop/Summit_Forestry/stands/HILL-0341-009.shp")
+#mask_sf = sf::read_sf("~/Desktop/Summit_Forestry/stands/hills_forest_cutblocks.shp")
 mask_rast = rasterize(vect(mask_sf), dem_rast, touches = TRUE)
 terra::crs(mask_rast) =  "epsg:2193"
-ggplot(mask_sf) + geom_sf(aes(fill = 'red'), show.legend = FALSE)
+ggplot(mask_sf) + geom_sf(aes(fill = 'red'), show.legend = FALSE) + 
+  ggtitle("AOI: Cutblock HILL-0341-009")
 
 # Align & apply mask
 mask_rast = terra::resample(mask_rast, dsm_rast, method="near")
@@ -111,11 +119,11 @@ plot(elev, main="Elevation (m)")
 plot(chm, main="Canopy Height (m)")
 ```
 
-## Input: Variable Window Function
+## 3. Inputs: Variable Window Function
+
+We used Plowright's variable window function here as a temporary fix only. This ratio was developed from in the Kootenays looking at mixed-species and lodgepole pine stands here: <https://cran.r-project.org/web/packages/ForestTools/vignettes/treetop_analysis.html>. This needs replaceing with taper curves from local Radiata pine stands.
 
 ```{r, fig.show='hold', out.width="50%", eval=TRUE}
-# Used Plowright's window function as temporary fix here: 
-# https://cran.r-project.org/web/packages/ForestTools/vignettes/treetop_analysis.html
 wf_plowright<-function(x){ 
   a=0.05
   b=0.6 
@@ -126,47 +134,129 @@ window_plowright <- wf_plowright(heights)
 plot(heights, window_plowright, type = "l", ylim = c(0,12), xlab="point elevation (m)", ylab="window diameter (m)", main='Plowright, 2018; y=0.05*x+0.6')
 ```
 
-## Output: 95% Canopy Height & Stem Count Layers
+## 4. Outputs: 95% Canopy Height & Stem Count Layers
+
+The ForestTools package was used to apply the variable window function, fitted with custom taper above and minimum floor threshold of 1.5 metres above ground. This produces point shapefile of tree tops that can be read in as sp dataframe. With more time available, it is recommended to validate tree top results either using the resulting TreeID attribute or by running a crown segmentation function. To capture estimates at the 95th percentile of tree height, a custom function 'custFuns' is derived below and inputted into the 'sp_summarise' command. Outputs are in raster format and resolution is set with grid units factored from current crs. Whatever the tree count at this resolution must be recaculated to the level of 100m sq before aggregating rasters. Yet, I've found the sp_summarize sometimes differs and is be more accurate over wider extents, not sure why.
 
 ```{r, eval=TRUE, fig.show='hold', out.width="33%", echo=TRUE, eval=FALSE}
 kernel <- matrix(1,3,3)
 chm_raster = focal(chm, w = kernel, fun = median, na.rm = TRUE) %>% raster()
 ttops_1.5mfloor_plowright = ForestTools::vwf(chm_raster, wf_plowright, 1.5)
-writeOGR(ttops_1.5mfloor_plowright, "~/Desktop/Summit_Forestry/stands", "treetops_hills_009_masked", driver = "ESRI Shapefile") 
+writeOGR(ttops_1.5mfloor_plowright, "~/Desktop/Summit_Forestry/stands", "treetops_hills_009.shp", driver = "ESRI Shapefile") 
 
 quant95 <- function(x, ...) 
   quantile(x, c(0.95), na.rm = TRUE)
 custFuns <- list(quant95, max)
 names(custFuns) <- c("95thQuantile", "Max")
 
-# Derive output rasters and assign resolution
+# Derive stems and canopy rasters and assign resolution (per hectare) 
 ttops_1.5mfloor_height <- ForestTools::sp_summarise(ttops_1.5mfloor_plowright, grid = 10, variables = "height", statFuns = custFuns)
 stem_count_raster = ttops_1.5mfloor_height[["TreeCount"]]
 chm_95height_raster = ttops_1.5mfloor_height[["height95thQuantile"]]
-raster::writeRaster(chm_95height_raster, filename = "~/Desktop/Summit_Forestry/stands/chm_95height_10m.tif", overwrite=TRUE)
-raster::writeRaster(stem_count_raster, filename = "~/Desktop/Summit_Forestry/stands/stem_count_10m.tif", overwrite=TRUE)
+raster::writeRaster(chm_95height_raster, filename = "~/Desktop/Summit_Forestry/stands/chm_95height_10m_allStands.tif", overwrite=TRUE)
+raster::writeRaster(stem_count_raster, filename = "~/Desktop/Summit_Forestry/stands/stem_count_10m_allStands.tif", overwrite=TRUE)
 
+mypalette<-brewer.pal(8,"Greens")
+stem_count_rast = terra::rast(stem_count_raster)
+# Aggregate to stems per 100m^2 from 10m resolution
+stem_count_ha = 10*stem_count_rast
+raster::writeRaster(stem_count_ha, filename = "~/Desktop/Summit_Forestry/stands/stem_count_10m_ha.tif", overwrite=TRUE)
+chm_95height_rast = terra::rast(chm_95height_raster)
+stem_count_ha_sf = st_as_sf(ttops_1.5mfloor_plowright)
+ggplot() + 
+  geom_sf(data=mask_sf) + 
+  geom_sf(data=stem_count_ha_sf, cex = 0.2, pch="+", col = 'red', lwd=1, alpha=1, show.legend = "point") + 
+  ggtitle("Stem Map") + 
+  coord_sf(default_crs = sf::st_crs(2193))
+#{plot(chm_95height_rast, col = mypalette, alpha=0.6, main="Stem Map over 95% CHM")  
+#plot(st_geometry(stem_count_ha_sf["treeID"]), cex = 0.2, pch="+", col = 'red', lwd=1, alpha=1, add=TRUE) }
+plot(stem_count_rast, main="Raster Stems/ha (10m Res)")
+plot(chm_95height_rast, main="95% Canopy Height Model (m)")
+```
+
+```{r, eval=TRUE, fig.show='hold', out.width="33%", echo=FALSE, eval=TRUE}
+ttops_1.5mfloor_plowright <- readOGR(dsn = "~/Desktop/Summit_Forestry/stands", layer = "treetops_hills_009.shp")
+stem_count_raster = raster::raster("~/Desktop/Summit_Forestry/stands/stem_count_masked009_10m.tif")
+chm_95height_raster = raster::raster("~/Desktop/Summit_Forestry/stands/chm_95height_masked009_10m.tif")
 mypalette<-brewer.pal(8,"Greens")
 stem_count_rast = terra::rast(stem_count_raster)
 stem_count_ha = 10*stem_count_rast
 chm_95height_rast = terra::rast(chm_95height_raster)
 stem_count_ha_sf = st_as_sf(ttops_1.5mfloor_plowright)
-{plot(chm_95height_rast, col = mypalette, alpha=0.6, main="Stem Map over 95% CHM")  
-plot(st_geometry(stem_count_ha_sf["treeID"]), cex = 0.2, pch="+", col = 'red', lwd=1, alpha=1, add=TRUE) }
-plot(stem_count_ha, main="Raster Stems/ha (10m Res)")
+ggplot() + 
+  geom_sf(data=mask_sf) + 
+  geom_sf(data=stem_count_ha_sf, cex = 0.2, pch="+", col = 'red', lwd=1, alpha=1, show.legend = "point") + 
+  ggtitle("Stem Map") + 
+  coord_sf(default_crs = sf::st_crs(2193))
+#{plot(chm_95height_rast, col = mypalette, alpha=0.6, main="Stem Map over 95% CHM")  
+#plot(st_geometry(stem_count_ha_sf["treeID"]), cex = 0.2, pch="+", col = 'red', lwd=1, alpha=1, add=TRUE) }
+plot(stem_count_ha, main="Raster Stems/ha")
+plot(chm_95height_rast, main="95% Canopy Height Model (m)")
+
+#mask_rast = terra::resample(mask_rast, chm_95height_rast, method="near")
+#chm_95height_rast = terra::resample(chm_95height_rast, stem_count_rast, method="near")
+#chm_95height_rast_masked = mask(chm_95height_rast, mask_rast, inverse=FALSE)
+#stem_count_rast_masked = mask(stem_count_rast, mask_rast, inverse=FALSE)
+#writeRaster(chm_95height_rast_masked, filename = "~/Desktop/Summit_Forestry/stands/chm_95height_masked009_100m.tif", overwrite=TRUE)
+#writeRaster(stem_count_rast_masked, filename = "~/Desktop/Summit_Forestry/stands/stem_count_masked009_100m.tif", overwrite=TRUE)
+#plot(chm_95height_rast_masked)
+#plot(stem_count_rast_masked)
+#stem_count_raster = raster::raster("~/Desktop/Summit_Forestry/stands/stem_count_10m_allStands.tif")
+#stem_count_rast = terra::rast(stem_count_raster)
+#stem_count_rast = terra::aggregate(stem_count_rast, fact = 2, fun = mean)
+#raster::writeRaster(stem_count_rast, filename = "~/Desktop/Summit_Forestry/stands/stem_count_20m_allStands.tif", overwrite=TRUE)
+
+
+#ttops_1.5mfloor_plowright <- readOGR(dsn = "~/Desktop/Summit_Forestry/stands", layer = "treetops_hills")
+#stem_count_ha_sf = st_as_sf(ttops_1.5mfloor_plowright)
+#ggplot() + 
+# geom_sf(data=stem_count_ha_sf, cex = 0.2, pch="+", col = 'red', lwd=1, alpha=1, show.legend = "point") + 
+#  ggtitle("Stem Map") + 
+#  coord_sf(default_crs = sf::st_crs(2193))
+
+#quant95 <- function(x, ...) 
+#  quantile(x, c(0.95), na.rm = TRUE)
+#custFuns <- list(quant95, max)
+#names(custFuns) <- c("95thQuantile", "Max")
+
+#ttops_1.5mfloor_height <- ForestTools::sp_summarise(ttops_1.5mfloor_plowright, grid = 100, variables = "height", statFuns = custFuns)
+#stem_count_raster = ttops_1.5mfloor_height[["TreeCount"]]
+#chm_95height_raster = ttops_1.5mfloor_height[["height95thQuantile"]]
+#stem_count_rast = terra::rast(stem_count_raster)
+#chm_95height_rast = terra::rast(chm_95height_raster)
+#stem_count_ha = 10*stem_count_rast
+#raster::writeRaster(chm_95height_raster, filename = "~/Desktop/Summit_Forestry/stands/chm_95height_10m_allStands.tif", overwrite=TRUE)
+#raster::writeRaster(stem_count_ha, filename = "~/Desktop/Summit_Forestry/stands/stem_count_10m_allStands.tif", overwrite=TRUE)0
+
+#stem_count_ha_20m = terra::aggregate(stem_count_ha, fact = 2, fun = mean)
+#chm_95height_rast_20m = terra::aggregate(chm_95height_rast, fact = 2, fun = mean)
+#raster::writeRaster(stem_count_ha_20m, filename = "~/Desktop/Summit_Forestry/stands/stem_count_20m_allStands.tif", overwrite=TRUE)
+#raster::writeRaster(chm_95height_rast_20m, filename = "~/Desktop/Summit_Forestry/stands/chm_95height_20m_allStands.tif", overwrite=TRUE)
+
+#stem_count_ha_50m = terra::aggregate(stem_count_ha, fact = 5, fun = mean)
+#chm_95height_rast_50m = terra::aggregate(chm_95height_rast, fact = 5, fun = mean)
+#raster::writeRaster(stem_count_ha_50m, filename = "~/Desktop/Summit_Forestry/stands/stem_count_50m_allStands.tif", overwrite=TRUE)
+#raster::writeRaster(chm_95height_rast_50m, filename = "~/Desktop/Summit_Forestry/stands/chm_95height_50m_allStands.tif", overwrite=TRUE)
+
+#plot(stem_count_ha)
+#plot(stem_count_ha_20m)
+#plot(stem_count_ha_50m)
+#plot(stem_count_rast)
+#plot(chm_95height_rast)
+#plot(chm_95height_rast_20m)
+#plot(chm_95height_rast_50m)
 ```
 
-```{r, eval=TRUE, fig.show='hold', out.width="100%", echo=FALSE, eval=TRUE}
-ttops_1.5mfloor_plowright <- readOGR(dsn = "~/Desktop/Summit_Forestry/stands", layer = "treetops_hills_009_masked")
-stem_count_raster = raster::raster("~/Desktop/Summit_Forestry/stands/stem_count_10m.tif")
-chm_95height_raster = raster::raster("~/Desktop/Summit_Forestry/stands/chm_95height_10m.tif")
-mypalette<-brewer.pal(8,"Greens")
-stem_count_rast = terra::rast(stem_count_raster)
-stem_count_ha = 10*stem_count_rast
-chm_95height_rast = terra::rast(chm_95height_raster)
-stem_count_ha_sf = st_as_sf(ttops_1.5mfloor_plowright)
-{plot(chm_95height_rast, col = mypalette, alpha=0.6, main="Stem Map over 95% CHM")  
-plot(st_geometry(stem_count_ha_sf["treeID"]), cex = 0.2, pch="+", col = 'red', lwd=1, alpha=1, add=TRUE) }
-plot(stem_count_ha, main="Raster Stems/ha (10m Res)")
-```
+## 5. Outputs: Site Maps
 
+For comparison, four sets of maps were produced in pdf format and added to document below. First two maps were drawn for overview and access purposes. Maps 3 and 4 include original and LiDAR-derived data showing stocking density, stand age and canopy height.
+
+1.  Site Access Map
+
+2.  Site Recon Map
+
+3.  Stocking Density Maps
+
+4.  Age Class & Canopy Height Maps
+
+All raster files were stored at 10m, 20m, 50m, and 100m resolutions and zipped in attachment with this report, along with spatial point dataframe of treetop locations in ESRI shapefile format.
